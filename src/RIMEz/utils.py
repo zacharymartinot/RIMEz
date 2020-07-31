@@ -1,7 +1,3 @@
-# -*- coding: utf-8 -*-
-# Copyright (c) 2019 UPennEoR
-# Licensed under the MIT License
-
 from functools import reduce
 
 import healpy as hp
@@ -28,6 +24,22 @@ HERA_HEIGHT = 1073.0000000093132  # meters
 
 
 def coords_to_location(array_lat, array_lon, array_height):
+    """
+
+    Parameters:
+    -----------
+    array_lat : float
+        Latitude coordinate (in radians) of a location on Earth.
+    array_lon : float
+        Longitude coordinate (in radians) of a location on Earth.
+    array_height : float
+        Height coordinate (in meters) of a location on Earth.
+
+    Returns:
+    --------
+    astropy.coordinates.EarthLocation object
+
+    """
     return coord.EarthLocation(
         lat=array_lat * units.rad,
         lon=array_lon * units.rad,
@@ -36,7 +48,22 @@ def coords_to_location(array_lat, array_lon, array_height):
 
 
 def kernel_cutoff_estimate(max_baseline_length_meters, max_freq_hz, width_estimate=100):
-    c_mps = const.c.to("m/s").value
+    """
+    Computes a crude estimate of where to truncate the sum over harmonic terms
+    in the harmonic method of evaluating the visibility function. The peak of the
+    kernel is at approximately the peak of
+
+    Parameters:
+    -----------
+    max_baseline_length_meters : float
+        The length of the longest baseline in a set of baselines of the visibility
+        calculation.
+    max_freq_hz : float
+        The largest frequency sample (in Hz) of the visibiilty calculation.
+    width_estimate : integer
+
+    """
+    c_mps = 299792458.0
     ell_peak_est = 2 * np.pi * max_freq_hz * max_baseline_length_meters / c_mps
 
     ell_cutoff = int(np.ceil(ell_peak_est + width_estimate))
@@ -200,46 +227,7 @@ def era_tot2JD(theta):
     JD = D_U + 2451545.0
     return JD
 
-
-def get_rotations_realistic(era_axis, JD_INIT, array_location):
-    p1 = np.array([1.0, 0.0, 0.0])
-    p2 = np.array([0.0, 1.0, 0.0])
-    p3 = np.array([0.0, 0.0, 1.0])
-
-    jd_axis = map(lambda era: era2JD(era, JD_INIT), era_axis)
-
-    JDs = Time(jd_axis, format="jd", scale="ut1")
-
-    rotations_axis = np.zeros((JDs.size, 3, 3), dtype=np.float)
-    for i in range(JDs.size):
-        gcrs_axes = coord.SkyCoord(
-            x=p1 * units.one,
-            y=p2 * units.one,
-            z=p3 * units.one,
-            location=array_location,
-            obstime=JDs[i],
-            frame="gcrs",
-            representation="cartesian",
-        )
-
-        transf_gcrs_axes = gcrs_axes.transform_to("altaz")
-        M = np.zeros((3, 3))
-        M[:, 0] = transf_gcrs_axes.cartesian.x.value
-        M[:, 1] = transf_gcrs_axes.cartesian.y.value
-        M[:, 2] = transf_gcrs_axes.cartesian.z.value
-
-        # the matrix M is generally not an orthogonal matrix
-        # to working precision, but it is very close. This procedure
-        # finds the orthogonal matrix that is nearest to M,
-        # as measured by the Frobenius norm.
-        Rt, _ = linalg.orthogonal_procrustes(M, np.eye(3))
-        rotations_axis[i] = np.transpose(Rt)
-
-    return rotations_axis, JDs.jd
-
-
-def get_rotations_realistic_from_JDs(jd_axis, array_location):
-
+def get_rotations_realistic_from_JDs(jd_axis, array_location, reference_jd=None):
     jd_axis = np.atleast_1d(jd_axis)
 
     p1 = np.array([1.0, 0.0, 0.0])
@@ -249,31 +237,115 @@ def get_rotations_realistic_from_JDs(jd_axis, array_location):
     JDs = Time(jd_axis, format="jd", scale="ut1")
 
     rotations_axis = np.zeros((JDs.size, 3, 3), dtype=np.float)
-    for i in range(JDs.size):
-        gcrs_axes = coord.SkyCoord(
-            x=p1 * units.one,
-            y=p2 * units.one,
-            z=p3 * units.one,
-            location=array_location,
-            obstime=JDs[i],
-            frame="gcrs",
-            representation="cartesian",
-        )
 
-        transf_gcrs_axes = gcrs_axes.transform_to("altaz")
+    if reference_jd is None:
+        frame_use = "gcrs"
+        ref_jd_obj = None
+    else:
+        frame_use = "cirs"
+        ref_jd_obj = Time(reference_jd, format="jd", scale="ut1")
+
+    skyfixed_axes = coord.SkyCoord(
+        x=p1 * units.one,
+        y=p2 * units.one,
+        z=p3 * units.one,
+        location=array_location,
+        obstime=ref_jd_obj,
+        frame=frame_use,
+        representation="cartesian",
+    )
+
+
+    for ii in range(JDs.size):
+
+        transf_skyfixed_axes = skyfixed_axes.transform_to(coord.AltAz(obstime=JDs[ii]))
+
         M = np.zeros((3, 3))
-        M[:, 0] = transf_gcrs_axes.cartesian.x.value
-        M[:, 1] = transf_gcrs_axes.cartesian.y.value
-        M[:, 2] = transf_gcrs_axes.cartesian.z.value
+        M[:, 0] = transf_skyfixed_axes.cartesian.x.value
+        M[:, 1] = transf_skyfixed_axes.cartesian.y.value
+        M[:, 2] = transf_skyfixed_axes.cartesian.z.value
 
-        # the matrix M is generally not an orthogonal matrix
-        # to working precision, but it is very close. This procedure
-        # finds the orthogonal matrix that is nearest to M,
-        # as measured by the Frobenius norm.
         Rt, _ = linalg.orthogonal_procrustes(M, np.eye(3))
-        rotations_axis[i] = np.transpose(Rt)
+        R = np.transpose(Rt)
+
+        rotations_axis[ii] = R
 
     return rotations_axis
+
+# def get_rotations_realistic(era_axis, JD_INIT, array_location):
+#     p1 = np.array([1.0, 0.0, 0.0])
+#     p2 = np.array([0.0, 1.0, 0.0])
+#     p3 = np.array([0.0, 0.0, 1.0])
+#
+#     jd_axis = map(lambda era: era2JD(era, JD_INIT), era_axis)
+#
+#     JDs = Time(jd_axis, format="jd", scale="ut1")
+#
+#     rotations_axis = np.zeros((JDs.size, 3, 3), dtype=np.float)
+#     for i in range(JDs.size):
+#         gcrs_axes = coord.SkyCoord(
+#             x=p1 * units.one,
+#             y=p2 * units.one,
+#             z=p3 * units.one,
+#             location=array_location,
+#             obstime=JDs[i],
+#             frame="gcrs",
+#             representation="cartesian",
+#         )
+#
+#         transf_gcrs_axes = gcrs_axes.transform_to("altaz")
+#         M = np.zeros((3, 3))
+#         M[:, 0] = transf_gcrs_axes.cartesian.x.value
+#         M[:, 1] = transf_gcrs_axes.cartesian.y.value
+#         M[:, 2] = transf_gcrs_axes.cartesian.z.value
+#
+#         # the matrix M is generally not an orthogonal matrix
+#         # to working precision, but it is very close. This procedure
+#         # finds the orthogonal matrix that is nearest to M,
+#         # as measured by the Frobenius norm.
+#         Rt, _ = linalg.orthogonal_procrustes(M, np.eye(3))
+#         rotations_axis[i] = np.transpose(Rt)
+#
+#     return rotations_axis, JDs.jd
+
+# def get_rotations_realistic_from_JDs(jd_axis, array_location):
+#
+#     jd_axis = np.atleast_1d(jd_axis)
+#
+#     p1 = np.array([1.0, 0.0, 0.0])
+#     p2 = np.array([0.0, 1.0, 0.0])
+#     p3 = np.array([0.0, 0.0, 1.0])
+#
+#     #     jd_axis = map(lambda era: era2JD(era, JD_INIT), era_axis)
+#
+#     JDs = Time(jd_axis, format="jd", scale="ut1")
+#
+#     rotations_axis = np.zeros((JDs.size, 3, 3), dtype=np.float)
+#     for i in range(JDs.size):
+#         gcrs_axes = coord.SkyCoord(
+#             x=p1 * units.one,
+#             y=p2 * units.one,
+#             z=p3 * units.one,
+#             location=array_location,
+#             obstime=JDs[i],
+#             frame="gcrs",
+#             representation="cartesian",
+#         )
+#
+#         transf_gcrs_axes = gcrs_axes.transform_to("altaz")
+#         M = np.zeros((3, 3))
+#         M[:, 0] = transf_gcrs_axes.cartesian.x.value
+#         M[:, 1] = transf_gcrs_axes.cartesian.y.value
+#         M[:, 2] = transf_gcrs_axes.cartesian.z.value
+#
+#         # the matrix M is generally not an orthogonal matrix
+#         # to working precision, but it is very close. This procedure
+#         # finds the orthogonal matrix that is nearest to M,
+#         # as measured by the Frobenius norm.
+#         Rt, _ = linalg.orthogonal_procrustes(M, np.eye(3))
+#         rotations_axis[i] = np.transpose(Rt)
+#
+#     return rotations_axis
 
 
 def get_rotations_idealized(era_axis, array_location):
@@ -453,7 +525,7 @@ def beam_func_to_kernel_power_spectrum(nu_hz, b_m, beam_func):
     if L_use < 350:
         L_use = 350
 
-    theta, phi = sshtn.mwss_sample_positions(L_use)
+    theta, phi = sshtn.mwss_sample_grid(L_use)
 
     s = np.zeros(theta.shape + (3,))
     s[..., 0] = np.cos(phi) * np.sin(theta)
@@ -518,6 +590,7 @@ def uvdata_from_sim_data(
     telescope_name="left blank by user",
     history="left blank by user",
     object_name="left blank by user",
+    x_is_north=True,
 ):
 
     HERA_LAT = array_lat
@@ -574,8 +647,6 @@ def uvdata_from_sim_data(
     pols = ["xx", "yy", "xy", "yx"]
     uvd.polarization_array = np.array([polstr2num(pol_str) for pol_str in pols])
 
-    uvd.x_orientation = "east"
-
     if channel_width == "derived":
         uvd.channel_width = nu_axis[1] - nu_axis[0]
     else:
@@ -620,9 +691,21 @@ def uvdata_from_sim_data(
 
     uvd.phase_type = "drift"
 
-    # (0,0) <-> 'xx' <-> East-East, etc.
-    # matches order of uvd.polarization_array
-    pol_map = {(0, 0): 0, (1, 1): 1, (0, 1): 2, (1, 0): 3}
+    # VisibilityCalculation data array has idicies 0 <-> East, 1 <-> North
+    if x_is_north:
+        # (1,1) <-> 'xx' <-> North-North, etc.
+        # matches order of uvd.polarization_array
+        pol_map = {(1, 1): 0, (0, 0): 1, (1, 0): 2, (0, 1): 3}
+
+        uvd.x_orientation = "NORTH"
+
+    else:
+        # (0,0) <-> 'xx' <-> East-East, etc.
+        # matches order of uvd.polarization_array
+        pol_map = {(0, 0): 0, (1, 1): 1, (0, 1): 2, (1, 0): 3}
+
+        uvd.x_orientation = "EAST"
+
 
     for i_a in range(2):
         for i_b in range(2):
@@ -657,7 +740,7 @@ def inflate_uvdata_redundancies(uvd, red_gps):
 
     # number of baselines = (Nants*(Nants+1))/2, including autos
     Nants = uvd.Nants_telescope
-    assert Nbls_full == (Nants * (Nants + 1)) // 2
+    # assert Nbls_full == (Nants * (Nants + 1)) // 2
 
     # the baseline numbers in the compressed dataset
     bl_array_comp = uvd.baseline_array

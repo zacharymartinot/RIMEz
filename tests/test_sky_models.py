@@ -1,11 +1,5 @@
-# -*- coding: utf-8 -*-
-# Copyright (c) 2019 UPennEoR
-# Licensed under the MIT License
-
 import numpy as np
-
 from RIMEz import sky_models
-
 
 def test_random_power_law():
     """Test random_power_law function"""
@@ -22,3 +16,19 @@ def test_random_power_law():
     assert pl.size == 1
 
     return
+
+def test_point_source_harmonics():
+    np.random.seed(53)
+    Nsrc = 10
+    RA = np.random.rand(Nsrc) * 2*np.pi
+    dec = np.random.rand(Nsrc) * np.pi - np.pi/2.
+    x = np.linspace(0.5, 1.5, 201)
+    alpha = np.random.randn(Nsrc)*0.2 - 0.8
+    flux = np.random.randn(Nsrc) + 10
+    I = flux[None,:] * x[:,None]**alpha[None,:]
+    L = 400
+
+    Ilm = sky_models.point_sources_harmonics_with_gridding(I, RA, dec, L)
+    Ilm2 = sky_models.point_sources_harmonics(I, RA, dec, L)
+
+    assert np.allclose(Ilm, Ilm2, atol=5e-9)

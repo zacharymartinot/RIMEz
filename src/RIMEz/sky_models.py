@@ -1,13 +1,11 @@
-# -*- coding: utf-8 -*-
-# Copyright (c) 2019 UPennEoR
-# Licensed under the MIT License
-
 import h5py
 import healpy as hp
 import numba as nb
 import numpy as np
 import ssht_numba as sshtn
+import ctypes
 from scipy import interpolate
+from scipy import special
 
 from . import utils
 
@@ -66,6 +64,91 @@ def sky_from_catalog(catalog, nu_axis):
     S[:, :, 0] = F_nu
     return S, RA, dec
 
+# produce njit-able function to evaluate Legendre polynomials.
+# there are several different functions in `cython_special` for different
+# data types, this one is for the
+P_addr = nb.extending.get_cython_function_address('scipy.special.cython_special', '__pyx_fuse_1_1eval_legendre')
+P_functype = ctypes.CFUNCTYPE(ctypes.c_double, ctypes.c_int, ctypes.c_double)
+
+P_fnc = P_functype(P_addr)
+
+@nb.vectorize("float64(int64, float64)")
+def njit_P(n, x):
+    return P_fnc(n, x)
+
+@nb.vectorize("float64(int64, float64)")
+def legendre_polynomial_sum(N, x):
+    return (N+1)/(x-1) * (njit_P(N+1, x) - njit_P(N,x))
+
+@nb.vectorize("float64(int64, float64)")
+def legendre_polynomial_sum_near_1(N, x):
+    """
+    Taylor series expansion of `legendre_polynomial_sum` near x = 1
+    up to second order in (x-1).
+    """
+    K = (1+N)**2 \
+    + (1/4)*(N+1)*(2*N + 3*N**2 + N**3)*(x-1)
+    + (1/48)*(1+N)*(-6*N - 5*N**2 + 5*N**3 + 5*N**4 + N**5)*(x-1)**2
+
+    return K
+
+@nb.guvectorize("float64[:], float64[:,:],\
+                float64[:], float64[:], int64, float64[:]",
+               "(x),(f,i),(i),(i),()->(f)",
+               nopython=True,
+               target='parallel')
+def grid_sources(s_hat, I, RA, dec, L, G):
+    Nfreq, Nsrc = I.shape
+
+    for ii in range(Nsrc):
+        cos_ra, sin_ra = np.cos(RA[ii]), np.sin(RA[ii])
+        cos_dec, sin_dec = np.cos(dec[ii]), np.sin(dec[ii])
+
+        x_i = cos_ra * cos_dec
+        y_i = sin_ra * cos_dec
+        z_i = sin_dec
+
+        s_dot_s_i = s_hat[0]*x_i + s_hat[1]*y_i + s_hat[2]*z_i
+        if np.abs(s_dot_s_i - 1) < 1e-14:
+            K_i = legendre_polynomial_sum_near_1(L-1, s_dot_s_i)
+        else:
+            K_i = legendre_polynomial_sum(L-1, s_dot_s_i)
+
+        for kk in range(Nfreq):
+            G[kk] += I[kk, ii] * K_i
+
+@nb.njit(parallel=True, nogil=True)
+def parallelized_harmonic_transform(G, L, Ilm):
+    for kk in nb.prange(Ilm.shape[0]):
+        sshtn.mw_forward_sov_conv_sym_ss_real(G[kk], L, Ilm[kk])
+
+def point_sources_harmonics_with_gridding(I, RA, dec, L):
+    Nfreq, Nsrc = I.shape
+
+    ttheta, pphi = sshtn.mwss_sample_grid(L)
+    s_hat = np.zeros((ttheta.shape[0], ttheta.shape[1], 3,))
+
+    cos_p, sin_p = np.cos(pphi), np.sin(pphi)
+    cos_t, sin_t = np.cos(ttheta), np.sin(ttheta)
+
+    s_hat[...,0] = cos_p * sin_t
+    s_hat[...,1] = sin_p * sin_t
+    s_hat[...,2] = cos_t
+
+    G = np.zeros((ttheta.shape[0], ttheta.shape[1], Nfreq), dtype=np.float64)
+
+    grid_sources(s_hat, I, RA, dec, L, G)
+
+    Ilm = np.empty((Nfreq, L**2), dtype=np.complex128)
+
+    # copy to actually reorder in memory
+    G = np.transpose(G, (2,0,1), ).copy()
+
+    parallelized_harmonic_transform(G, L, Ilm)
+
+    Ilm /= 4*np.pi # this
+
+    return Ilm
 
 @nb.njit
 def spin0_spherical_harmonics(ell, theta, phi, delta):

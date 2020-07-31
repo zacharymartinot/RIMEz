@@ -1,7 +1,3 @@
-# -*- coding: utf-8 -*-
-# Copyright (c) 2019 UPennEoR
-# Licensed under the MIT License
-
 import os
 import warnings
 
@@ -78,7 +74,7 @@ class VisibilityCalculation(object):
         )
 
         jd0 = self.initial_time_sample_jd
-        self.R_0 = utils.get_rotations_realistic_from_JDs(jd0, array_location)
+        self.R_0 = utils.get_rotations_realistic_from_JDs(jd0, array_location, reference_jd=jd0)
 
         self.Lss, _ = sshtn.ind2elm(self.Slm.shape[1])
 
@@ -283,34 +279,17 @@ class PointSourceSpectraSet(object):
             self.file_path = file_path
             self.load_from_file()
 
-    def generate_harmonics(self, L, N_blocks=1):
+    def generate_harmonics(self, L):
         """
         Compute the harmonic coefficients for this set of point sources up to
-        the spatial bandlimit L. If harmonics have already been computed up to
-        a limit L0, then the harmonics in the range [L0, L) are computed
-        and appended.
+        the spatial bandlimit L.
         """
 
         if self.Ilm is None:
             self.L = L
-            self.Ilm = sky_models.threaded_point_sources_harmonics(
-                self.Iflux, self.RA, self.Dec, self.L, n_blocks=N_blocks
+            self.Ilm = sky_models.point_sources_harmonics_with_gridding(
+                self.Iflux, self.RA, self.Dec, self.L
             )
-        else:
-            L0 = self.L
-            self.L = L
-
-            Ilm_new = sky_models.threaded_point_sources_harmonics(
-                self.Iflux, self.RA, self.Dec, self.L, ell_min=L0, n_blocks=N_blocks
-            )
-
-            Ilm_init = np.zeros((self.Ilm.shape[0], self.L ** 2), dtype=np.complex128)
-            Ilm_init[:, : L0 ** 2] = self.Ilm
-            Ilm_init[:, L0 ** 2 :] = Ilm_new
-
-            self.Ilm = np.copy(Ilm_init)
-
-            del Ilm_init, Ilm_new
 
     def __add__(self, other):
         if not isinstance(other, PointSourceSpectraSet):
