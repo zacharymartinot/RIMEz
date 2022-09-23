@@ -26,7 +26,7 @@ def test_point_source_harmonics():
     alpha = np.random.randn(Nsrc)*0.2 - 0.8
     flux = np.random.randn(Nsrc) + 10
     I = flux[None,:] * x[:,None]**alpha[None,:]
-    L = 400
+    L = 200
 
     Ilm = sky_models.point_sources_harmonics_with_gridding(I, RA, dec, L)
     Ilm2 = sky_models.point_sources_harmonics(I, RA, dec, L)

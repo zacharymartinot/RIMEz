@@ -272,82 +272,6 @@ def get_rotations_realistic_from_JDs(jd_axis, array_location, reference_jd=None)
 
     return rotations_axis
 
-# def get_rotations_realistic(era_axis, JD_INIT, array_location):
-#     p1 = np.array([1.0, 0.0, 0.0])
-#     p2 = np.array([0.0, 1.0, 0.0])
-#     p3 = np.array([0.0, 0.0, 1.0])
-#
-#     jd_axis = map(lambda era: era2JD(era, JD_INIT), era_axis)
-#
-#     JDs = Time(jd_axis, format="jd", scale="ut1")
-#
-#     rotations_axis = np.zeros((JDs.size, 3, 3), dtype=np.float)
-#     for i in range(JDs.size):
-#         gcrs_axes = coord.SkyCoord(
-#             x=p1 * units.one,
-#             y=p2 * units.one,
-#             z=p3 * units.one,
-#             location=array_location,
-#             obstime=JDs[i],
-#             frame="gcrs",
-#             representation="cartesian",
-#         )
-#
-#         transf_gcrs_axes = gcrs_axes.transform_to("altaz")
-#         M = np.zeros((3, 3))
-#         M[:, 0] = transf_gcrs_axes.cartesian.x.value
-#         M[:, 1] = transf_gcrs_axes.cartesian.y.value
-#         M[:, 2] = transf_gcrs_axes.cartesian.z.value
-#
-#         # the matrix M is generally not an orthogonal matrix
-#         # to working precision, but it is very close. This procedure
-#         # finds the orthogonal matrix that is nearest to M,
-#         # as measured by the Frobenius norm.
-#         Rt, _ = linalg.orthogonal_procrustes(M, np.eye(3))
-#         rotations_axis[i] = np.transpose(Rt)
-#
-#     return rotations_axis, JDs.jd
-
-# def get_rotations_realistic_from_JDs(jd_axis, array_location):
-#
-#     jd_axis = np.atleast_1d(jd_axis)
-#
-#     p1 = np.array([1.0, 0.0, 0.0])
-#     p2 = np.array([0.0, 1.0, 0.0])
-#     p3 = np.array([0.0, 0.0, 1.0])
-#
-#     #     jd_axis = map(lambda era: era2JD(era, JD_INIT), era_axis)
-#
-#     JDs = Time(jd_axis, format="jd", scale="ut1")
-#
-#     rotations_axis = np.zeros((JDs.size, 3, 3), dtype=np.float)
-#     for i in range(JDs.size):
-#         gcrs_axes = coord.SkyCoord(
-#             x=p1 * units.one,
-#             y=p2 * units.one,
-#             z=p3 * units.one,
-#             location=array_location,
-#             obstime=JDs[i],
-#             frame="gcrs",
-#             representation="cartesian",
-#         )
-#
-#         transf_gcrs_axes = gcrs_axes.transform_to("altaz")
-#         M = np.zeros((3, 3))
-#         M[:, 0] = transf_gcrs_axes.cartesian.x.value
-#         M[:, 1] = transf_gcrs_axes.cartesian.y.value
-#         M[:, 2] = transf_gcrs_axes.cartesian.z.value
-#
-#         # the matrix M is generally not an orthogonal matrix
-#         # to working precision, but it is very close. This procedure
-#         # finds the orthogonal matrix that is nearest to M,
-#         # as measured by the Frobenius norm.
-#         Rt, _ = linalg.orthogonal_procrustes(M, np.eye(3))
-#         rotations_axis[i] = np.transpose(Rt)
-#
-#     return rotations_axis
-
-
 def get_rotations_idealized(era_axis, array_location):
     Hlat = array_location.lat.rad
     Hlon = array_location.lon.rad
@@ -423,6 +347,39 @@ def get_galactic_to_gcrs_rotation_matrix():
     R_g2gcrs = np.transpose(Rt)
     return R_g2gcrs
 
+def transform_icrs_to_cirs(RA_icrs, Dec_icrs, reference_jd):
+    """
+    Transform RA, Dec coordinates given in the ICRS frame to the CIRS frame at a
+    particular Julian Data.
+
+    Parameters
+    ----------
+    RA_icrs: ndarray
+        1D array of Right Ascension coordinates (in radians) in the ICRS frame.
+    Dec_icrs: ndarray
+        1D array of Declination coordinates (in radians) in the ICRS frame.
+    reference_jd: float
+        A Julian Date that specifies the CIRS frame of the output coordinates.
+    Returns
+    -------
+    RA_cirs: ndarray
+        1D array of Right Ascension coordinates (in radians) in the CIRS frame.
+    Dec_cirs: ndarray
+        1D array of Declination coordinates (in radians) in the CIRS frame.
+    """
+    radec_icrs = coord.SkyCoord(
+        ra=RA_icrs_deg*units.deg,
+        dec=Dec_icrs_deg*units.deg,
+        frame='icrs'
+    )
+
+    obstime = Time(reference_jd, format='jd', scale='ut1')
+    radec_cirs = radec_icrs.transform_to(coord.CIRS(obstime=obstime))
+
+    RA_cirs = radec_cirs.ra.rad
+    Dec_cirs = radec_cirs.dec.rad
+
+    return RA_cirs, Dec_cirs
 
 # Things derived from beam functions
 

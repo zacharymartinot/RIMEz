@@ -77,6 +77,7 @@ def visibility_calculation_fixed_test_parameters():
     L = int(2*np.pi*(2/3)*np.sqrt(2)*20 + 100) # the beam width is 6 so this is plenty
 
     I_1src = S[...,0]
+    print("Computing source harmonics...")
     Ilm_1src = sky_models.point_sources_harmonics_with_gridding(I_1src, RA, dec, L)
 
     Slm = Ilm_1src.reshape(Ilm_1src.shape + (1,))

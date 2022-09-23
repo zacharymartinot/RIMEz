@@ -16,6 +16,29 @@ def test_get_versions():
 
     return
 
+@pytest.fixture
+def harmnonics_calculation_parameters():
+    (array_latitude, array_longitude, array_height, jd_axis, jd0,
+    rotations_axis, nu_hz, r_axis, ant_pairs, beam_func, ant_ind2beam_func,
+    S, RA, dec,
+    Slm, R_0, L,
+    delta_era_axis, integration_time) = visibility_calculation_fixed_test_parameters
+
+    parameters = {
+        "array_latitude" : array_latitude,
+        "array_longitude" : array_longitude,
+        "array_height" : array_height,
+        "initial_time_sample_jd" : jd0,
+        "integration_time" : integration_time,
+        "frequency_samples_hz" : nu_hz,
+        "antenna_positions_meters" : r_axis,
+        "antenna_pairs_used" : ant_pairs,
+        "antenna_beam_function_map" : ant_ind2beam_func,
+        "integral_kernel_cutoff" : L,
+    }
+
+    return parameters, beam_func, Slm
+
 class TestVisibilityCalculation:
 
     @pytest.fixture(autouse=True) # not sure why scope="class" doesn't work here
@@ -44,6 +67,10 @@ class TestVisibilityCalculation:
         self.integration_time = integration_time
         self.V_1src_rec, self.Vm_1src_rec, self.Vhrm_1src_rec = visibility_calculation_fixed_test_output
 
+    def test_setup(self):
+        calculation_method = 'harmonics'
+        VCh = management.VisibilityCalculation(self.parameters)
+
     def test_compute_fourier_modes(self):
         VC = self.VC
         VC.compute_fourier_modes()
@@ -59,5 +86,9 @@ class TestVisibilityCalculation:
 
         VC.compute_time_series(time_sample_jds=time_sample_jds, integration_time=integration_time)
 
+<<<<<<< HEAD
         assert np.allclose(VC.V, self.Vhrm_1src_rec, atol=1e-8)
 >>>>>>> 3c2d717 (combination of several things, in particular:harmonic transform with gridding, tests)
+=======
+        assert np.allclose(VC.V, self.Vhrm_1src_rec, atol=1e-14)
+>>>>>>> 723fd30 (tweaks and fixes)

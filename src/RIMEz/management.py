@@ -35,14 +35,35 @@ class VisibilityCalculation(object):
         "integral_kernel_cutoff",
     )
 
+
     def __init__(
-        self, parameters=None, beam_func=None, Slm=None, restore_file_path=None
+        self, parameters=None,
+        beam_func=None, Slm=None, S=None, RA_icrs=None, Dec_icrs=None,
+        restore_file_path=None
     ):
 
         if parameters is not None:
 
-            if beam_func is None or Slm is None:
-                raise ValueError("beam_func and Slm inputs must be provided.")
+            if beam_func is None:
+                raise ValueError("beam_func input must be provided.")
+
+            self.beam_func = beam_func
+
+            if Slm is not None:
+                self.Slm = Slm
+                self.calculation_method = 'harmonics'
+            elif S is not None:
+
+                if RA_icrs is None or Dec_icrs is None:
+                    raise ValueError("RA_icrs and Dec_icrs coordinate arrays must be provided.")
+
+                else:
+                    self.S = S
+                    self.RA_icrs = RA_icrs
+                    self.Dec_icrs = Dec_icrs
+                    self.calculation_method = 'point_samples'
+            else:
+                raise ValueError("Input sky data must be provided.")
 
             for req_key in self.required_parameters:
                 if req_key in parameters:
@@ -57,15 +78,15 @@ class VisibilityCalculation(object):
             for key in parameters:
                 setattr(self, key, parameters[key])
 
-            self.beam_func = beam_func
-            self.Slm = Slm
-
             self.setup()
 
         elif restore_file_path is not None:
             self.load_visibility_calculation(restore_file_path)
             self.beam_func = None
             self.Slm = None
+            self.S = None
+            self.RA_icrs = None
+            self.Dec_icrs = None
 
     def setup(self):
 
@@ -73,60 +94,87 @@ class VisibilityCalculation(object):
             self.array_latitude, self.array_longitude, self.array_height
         )
 
-        jd0 = self.initial_time_sample_jd
-        self.R_0 = utils.get_rotations_realistic_from_JDs(jd0, array_location, reference_jd=jd0)
+        if self.calculation_method == "harmonics":
+            jd0 = self.initial_time_sample_jd
+            self.R_0 = utils.get_rotations_realistic_from_JDs(jd0, array_location, reference_jd=jd0)
 
-        self.Lss, _ = sshtn.ind2elm(self.Slm.shape[1])
+            self.Lss, _ = sshtn.ind2elm(self.Slm.shape[1])
+
+        elif self.calculation_method == "point_samples":
+            jd0 = self.initial_time_sample_jd
+
+            self.RA, self.Dec = utils.transform_icrs_to_cirs(self.RA_icrs, self.Dec_icrs, jd0)
+            self.rotations_axis = utils.get_rotations_realistic_from_JDs(self.time_sample_jds, array_location, reference_jd=jd0)
 
     def compute_fourier_modes(self):
 
-        nu_axis = self.frequency_samples_hz
-        r_axis = self.antenna_positions_meters
-        ant_pairs = self.antenna_pairs_used
-        ant_ind2beam_func = self.antenna_beam_function_map
-        beam_func = self.beam_func
-        Slm = self.Slm
-        R_0 = self.R_0
-        Lss = self.Lss
-        Lb = self.integral_kernel_cutoff
+        if self.calculation_method == "harmonics":
 
-        Vm = rime_funcs.parallel_mmode_unpol_visibilities(
-            nu_axis, r_axis, ant_pairs, beam_func, ant_ind2beam_func, Slm, R_0, Lss, Lb
-        )
+            nu_axis = self.frequency_samples_hz
+            r_axis = self.antenna_positions_meters
+            ant_pairs = self.antenna_pairs_used
+            ant_ind2beam_func = self.antenna_beam_function_map
+            beam_func = self.beam_func
+            Slm = self.Slm
+            R_0 = self.R_0
+            Lss = self.Lss
+            Lb = self.integral_kernel_cutoff
 
-        self.Vm = 0.5 * Vm
+            Vm = rime_funcs.parallel_mmode_unpol_visibilities(
+                nu_axis, r_axis, ant_pairs, beam_func, ant_ind2beam_func, Slm, R_0, Lss, Lb
+            )
+
+            self.Vm = 0.5 * Vm
+
+        elif self.calculation_method == "point_samples":
+            raise NotImplementedError
 
     def compute_time_series(self, time_sample_jds=None, integration_time=None):
 
-        if time_sample_jds is not None:
-            self.time_sample_jds = time_sample_jds
-            self.parameters["time_sample_jds"] = time_sample_jds
+        if self.calculation_method == "harmonics":
+            if time_sample_jds is not None:
+                self.time_sample_jds = time_sample_jds
+                self.parameters["time_sample_jds"] = time_sample_jds
 
-        if integration_time is not None:
+            if integration_time is not None:
 
-            if integration_time == 0:
+                if integration_time == 0:
 
-                print(
-                    "Input integration time is identically zero, changing to 1e-15 seconds."
-                )
-                integration_time = 1e-15  # seconds
+                    print(
+                        "Input integration time is identically zero, changing to 1e-15 seconds."
+                    )
+                    integration_time = 1e-15  # seconds
 
-            self.integration_time = integration_time
-            self.parameters["integration_time"] = integration_time
+                self.integration_time = integration_time
+                self.parameters["integration_time"] = integration_time
 
-        if getattr(self, "Vm", None) is None:
-            self.compute_fourier_modes()
+            if getattr(self, "Vm", None) is None:
+                self.compute_fourier_modes()
 
-        era0 = utils.JD2era_tot(self.initial_time_sample_jd)
-        era_axis = utils.JD2era_tot(self.time_sample_jds)
+            era0 = utils.JD2era_tot(self.initial_time_sample_jd)
+            era_axis = utils.JD2era_tot(self.time_sample_jds)
 
-        delta_era_axis = era_axis - era0
+            delta_era_axis = era_axis - era0
 
-        self.parameters["delta_era_axis"] = delta_era_axis
+            self.parameters["delta_era_axis"] = delta_era_axis
 
-        self.V = rime_funcs.parallel_visibility_dft_from_mmodes(
-            delta_era_axis, self.Vm, self.integration_time
-        )
+            self.V = rime_funcs.parallel_visibility_dft_from_mmodes(
+                delta_era_axis, self.Vm, self.integration_time
+            )
+
+        elif self.calculation_method == "point_samples":
+
+            self.V = rime_funcs.parallel_point_source_visibilities(
+                self.rotations_axis,
+                self.frequency_samples_hz,
+                self.antenna_positions_meters,
+                self.antenna_pairs_used,
+                self.beam_funcs,
+                self.antenna_beam_function_map,
+                self.S,
+                self.RA,
+                self.Dec
+            )
 
     def write_visibility_fourier_modes(self, file_path, overwrite=False):
 
@@ -148,8 +196,25 @@ class VisibilityCalculation(object):
                 commit_hash_str = np.string_(repo_versions[label])
                 h5f.create_dataset(label + "_version", data=commit_hash_str)
 
-    def write_visibility_time_series(self, file_path):
-        raise NotImplementedError
+    def write_visibility_time_series(self, file_path, overwrite=False):
+        # raise NotImplementedError
+        if getattr(self, "V", None) is None:
+            raise ValueError("No visibility data available for writing.")
+
+        repo_versions = _get_versions()
+
+        if overwrite is True and os.path.exists(file_path):
+            os.remove(file_path)
+
+        with h5py.File(file_path, "w") as h5f:
+            for key in self.parameters:
+                h5f.create_dataset(key, data=self.parameters[key])
+
+            h5f.create_dataset("V", data=self.V)
+
+            for label in repo_versions:
+                commit_hash_str = np.string_(repo_versions[label])
+                h5f.create_dataset(label + "_version", data=commit_hash_str)
 
     def load_visibility_calculation(self, file_path):
 

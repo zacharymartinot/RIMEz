@@ -117,7 +117,7 @@ def grid_sources(s_hat, I, RA, dec, L, G):
         for kk in range(Nfreq):
             G[kk] += I[kk, ii] * K_i
 
-@nb.njit(parallel=True, nogil=True)
+@nb.njit(parallel=True)
 def parallelized_harmonic_transform(G, L, Ilm):
     for kk in nb.prange(Ilm.shape[0]):
         sshtn.mw_forward_sov_conv_sym_ss_real(G[kk], L, Ilm[kk])

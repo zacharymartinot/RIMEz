@@ -11,13 +11,17 @@ from spin1_beam_model.jones_matrix_field import AntennaFarFieldResponse
 from .dfitpack_numba import bispeu_nb
 
 
-def model_data_to_spline_beam_func(full_file_name, nu_axis, L_synth=180, indexed=False):
+def model_data_to_spline_beam_func(full_file_name, nu_axis, L_synth=180, interp_method='sinc_rbf', indexed=False, horizon_taper=True):
     """
     Parameters:
     full_file_name: string : the full path to the file containing the spin1
         model data.
     nu_axis: numpy array of floats, frequencies in Hz.
     L_synth: the bandlimit of the maps used to derive the spline approximation.
+    interp_method: can be 'sinc_rbf' or 'cubic_spline' for different choices of frequency interpolation
+    indexed: whether the returned beam function has a dummy index argument or not
+    horizion_taper: if True a Tukey window taper is applied to the beam, starting at 2 degrees above
+        the horizon and taper to zero at the horizion
 
     Returns:
     A numba.njit decorated function to evaluate the spline approximation of
@@ -33,7 +37,7 @@ def model_data_to_spline_beam_func(full_file_name, nu_axis, L_synth=180, indexed
     AR.derive_symmetric_rotated_feed(rotation_angle_sign="positive")
 
     nu_axis_MHz = 1e-6 * nu_axis
-    AR.compute_spatial_spline_approximations(nu_axis_MHz, L_synth=L_synth)
+    AR.compute_spatial_spline_approximations(nu_axis_MHz, L_synth=L_synth, interp_method=interp_method)
 
     E_coeffs = AR.E_spl_coeffs
     rE_coeffs = AR.rE_spl_coeffs
@@ -44,7 +48,7 @@ def model_data_to_spline_beam_func(full_file_name, nu_axis, L_synth=180, indexed
     ky = AR.ky
 
     spline_beam_func = construct_spline_beam_func(
-        nu_axis, tx, ty, kx, ky, E_coeffs, rE_coeffs
+        nu_axis, tx, ty, kx, ky, E_coeffs, rE_coeffs, horizon_taper=horizon_taper
     )
 
     if indexed:
@@ -63,7 +67,7 @@ def model_data_to_spline_beam_func(full_file_name, nu_axis, L_synth=180, indexed
 
 
 def construct_spline_beam_func(
-    nu_axis, tx, ty, kx, ky, E_coeffs, rE_coeffs, imap="default"
+    nu_axis, tx, ty, kx, ky, E_coeffs, rE_coeffs, imap="default", horizon_taper=True,
 ):
     """
     Constructor of an njit-ed function to evaluate a Jones matrix.
@@ -139,9 +143,10 @@ def construct_spline_beam_func(
 
         J_eq = apply_basis_transform(J_aa, Umat)
 
-        tukeyW = tukey_window(alt, np.radians(2.0))
-        for n in range(J_eq.shape[0]):
-            J_eq[n] *= tukeyW[n]
+        if horizon_taper:
+            tukeyW = tukey_window(alt, np.radians(2.0))
+            for n in range(J_eq.shape[0]):
+                J_eq[n] *= tukeyW[n]
 
         return J_eq
 
