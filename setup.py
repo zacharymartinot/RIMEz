@@ -20,7 +20,6 @@ except VersionConflict:
     print("Error: version of setuptools is too old (<38.3)!")
     sys.exit(1)
 
-
 # make sure the fortran library is built before installing
 class CustomBuild(_build.build):
     def run(self):

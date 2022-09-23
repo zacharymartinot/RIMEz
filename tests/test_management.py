@@ -62,14 +62,15 @@ class TestVisibilityCalculation:
             "integral_kernel_cutoff" : L,
         }
 
+        self.parameters = parameters
         self.VC = management.VisibilityCalculation(parameters, beam_func, Slm)
         self.jd_axis = jd_axis
         self.integration_time = integration_time
         self.V_1src_rec, self.Vm_1src_rec, self.Vhrm_1src_rec = visibility_calculation_fixed_test_output
 
-    def test_setup(self):
-        calculation_method = 'harmonics'
-        VCh = management.VisibilityCalculation(self.parameters)
+    # def test_setup(self):
+    #     calculation_method = 'harmonics'
+    #     VCh = management.VisibilityCalculation(self.parameters)
 
     def test_compute_fourier_modes(self):
         VC = self.VC
