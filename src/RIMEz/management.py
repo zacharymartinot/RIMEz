@@ -221,9 +221,9 @@ class VisibilityCalculation(object):
         with h5py.File(file_path, "r") as h5f:
             self.parameters = {}
             for key in h5f.keys():
-                setattr(self, key, h5f[key].value)
+                setattr(self, key, h5f[key][()])
                 if (key in ["V", "Vm"]) is not True:
-                    self.parameters[key] = h5f[key].value
+                    self.parameters[key] = h5f[key][()]
 
     def to_uvdata(
         self,
@@ -427,19 +427,19 @@ class PointSourceSpectraSet(object):
             raise ValueError("File path not set")
 
         with h5py.File(self.file_path, "r") as h5f:
-            self.nu_mhz = h5f["nu_mhz"].value
+            self.nu_mhz = h5f["nu_mhz"][()]
             if "Iflux" not in h5f.keys():
                 warnings.warn(
                     "This is an old save file. Rewrite with "
                     "save_to_file() to ensure future compatibility."
                 )
-                self.Iflux = h5f["I"].value
+                self.Iflux = h5f["I"][()]
             else:
-                self.Iflux = h5f["Iflux"].value
-            self.RA = h5f["RA"].value
-            self.Dec = h5f["Dec"].value
-            self.coordinates = h5f["coordinates"].value
+                self.Iflux = h5f["Iflux"][()]
+            self.RA = h5f["RA"][()]
+            self.Dec = h5f["Dec"][()]
+            self.coordinates = h5f["coordinates"][()]
 
             if "Ilm" in h5f.keys():
-                self.Ilm = h5f["Ilm"].value
-                self.L = h5f["L"].value
+                self.Ilm = h5f["Ilm"][()]
+                self.L = h5f["L"][()]
