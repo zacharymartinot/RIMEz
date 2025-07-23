@@ -76,6 +76,10 @@ def test_visibility_calculations(visibility_calculation_fixed_test_parameters, v
 
     V_1src_rec, Vm_1src_rec, Vhrm_1src_rec = visibility_calculation_fixed_test_output
 
+    print(np.max(np.abs(V_1src - V_1src_rec)))
+    print(np.max(np.abs(Vm_1src - Vm_1src_rec)))
+    print(np.max(np.abs(Vhrm_1src - Vhrm_1src_rec)))
+
     assert np.allclose(V_1src, V_1src_rec, atol=5e-14)
     assert np.allclose(Vm_1src, Vm_1src_rec, atol=5e-14)
     assert np.allclose(Vhrm_1src, Vhrm_1src_rec, atol=5e-14)

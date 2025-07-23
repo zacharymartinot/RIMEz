@@ -30,20 +30,3 @@ class CustomBuild(_build.build):
         _source_dir = os.path.join(
             os.path.split(__file__)[0], "src", "RIMEz", "dfitpack_wrappers"
         )
-        try:
-            os.chdir(_source_dir)
-            spawn.spawn(["make", "clean"])
-            spawn.spawn(["make"])
-            os.chdir(cwd)
-        except spawn.DistutilsExecError:
-            sys.stderr.write("Error while building with make\n")
-            sys.exit(-1)
-        _build.build.run(self)
-
-
-if __name__ == "__main__":
-    setup(
-        cmdclass={"build": CustomBuild},
-        package_data={"RIMEz": ["dfitpack_wrappers/dfitpack_wrappers.so"]},
-        use_pyscaffold=True,
-    )

@@ -8,6 +8,9 @@ from astropy import _erfa
 from astropy import constants as const
 from astropy import coordinates as coord
 from astropy import units
+# from astropy import _erfa
+import erfa as _erfa
+
 from astropy.time import Time
 from pyuvdata import UVData
 from pyuvdata.utils import polstr2num
@@ -252,7 +255,7 @@ def get_rotations_realistic_from_JDs(jd_axis, array_location, reference_jd=None)
         location=array_location,
         obstime=ref_jd_obj,
         frame=frame_use,
-        representation="cartesian",
+        representation_type="cartesian",
     )
 
 
@@ -304,7 +307,7 @@ def get_icrs_to_gcrs_rotation_matrix():
     p3 = np.array([0.0, 0.0, 1.0])
 
     radec_icrs = coord.SkyCoord(
-        x=p1, y=p2, z=p3, frame="icrs", representation="cartesian"
+        x=p1, y=p2, z=p3, frame="icrs", representation_type="cartesian"
     )
 
     radec_gcrs = radec_icrs.transform_to("gcrs")
@@ -327,7 +330,7 @@ def get_galactic_to_gcrs_rotation_matrix():
     z_c = np.array([0, 0, 1.0])
 
     axes_gcrs = coord.SkyCoord(
-        x=x_c, y=y_c, z=z_c, frame="gcrs", representation="cartesian"
+        x=x_c, y=y_c, z=z_c, frame="gcrs", representation_type="cartesian"
     )
     axes_gal = axes_gcrs.transform_to("galactic")
     axes_gal.representation = "cartesian"

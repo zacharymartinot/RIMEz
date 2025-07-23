@@ -76,6 +76,7 @@ class TestVisibilityCalculation:
         VC = self.VC
         VC.compute_fourier_modes()
 
+        print(np.max(np.abs(VC.Vm - 0.5*self.Vm_1src_rec)))
         assert np.allclose(VC.Vm, 0.5*self.Vm_1src_rec, atol=1e-14)
 
     def test_compute_time_series(self):

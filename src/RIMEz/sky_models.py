@@ -165,8 +165,7 @@ def spin0_spherical_harmonics(ell, theta, phi, delta):
     Y_elm *= np.conj(sshtn.dl_m(ell, 0, theta, delta))
     return Y_elm
 
-
-def point_sources_harmonics(flux_density, ra, dec, L, ell_min=0):
+def old_point_sources_harmonics(flux_density, RA, dec, L, ell_min=0):
     """
     Compute the spherical harmonic coefficents for a set of point sources.
 
@@ -271,6 +270,113 @@ def threaded_point_sources_harmonics(flux_density, ra, dec, L, ell_min=0, n_bloc
 
     return Ilm
 
+
+# def point_sources_Ilm(I, RA, dec, L):
+#     RA = np.array(RA)
+#     dec = np.array(dec)
+#     codec = np.pi/2. - dec
+#
+#     delta = sshtn.generate_dl(np.pi/2., L)
+#
+#     Ilm = np.zeros((I.shape[0], L**2), dtype=np.complex128)
+#     for ell in range(L):
+#         m = np.arange(-ell, ell+1)
+#         indices = sshtn.elm2ind(ell, m)
+#
+#         for ii in range(RA.shape[0]):
+#             Ilm[:, indices] += I[:, ii, None] * np.conj(spin0_spherical_harmonics(ell, codec[ii], RA[ii], delta))
+#
+#     return Ilm
+
+@nb.njit
+def elm2ind(el, m):
+    # SSHT indexing
+    return el * el + el + m
+
+@nb.njit
+def A(ell, m):
+    ell_sq = ell*ell
+    m_sq = m*m
+    return np.sqrt((4*ell_sq - 1)/(ell_sq - m_sq))
+
+@nb.njit(fastmath=True)
+def spherical_harmonic_sequence(L, theta, phi):
+    # spherical harmonics with phase convention of McEwen and Wiaux 2011 (i.e. SSHT)
+    # implementing associated legendre recursiion method from Reinecke 2011 Sec 3.1.1
+
+    # could use some optimization/clean-up
+
+    cos_t = np.cos(theta)
+    sin_t = np.sin(theta)
+
+    P = np.zeros(L**2, dtype=np.float64)
+    Y = np.zeros(L**2, dtype=np.complex128)
+
+    def leg_to_sph(P, Y, ell, m, phi):
+        if m == 0:
+            Y[elm2ind(ell, m)] = P[elm2ind(ell, m)]
+        else:
+            cos_mp = np.cos(m*phi)
+            sin_mp = np.sin(m*phi)
+            expi_mp = cos_mp + 1j*sin_mp
+
+            Y[elm2ind(ell, m)] = np.conj(expi_mp) * P[elm2ind(ell, m)]
+
+            Y[elm2ind(ell, -m)] = expi_mp * P[elm2ind(ell, -m)]
+
+    P[0] = 1/np.sqrt(4*np.pi)
+    Y[0] = P[0]
+
+    P[elm2ind(1,1)] = -sin_t * np.sqrt(1.5) *P[0]
+    P[elm2ind(1,0)] = np.sqrt(3.0) * cos_t * P[0]
+    P[elm2ind(1, -1)] = -1.0 * P[elm2ind(1,1)]
+
+    for m in [-1,0, 1]:
+        leg_to_sph(P, Y, 1, m, phi)
+
+    for ell in range(2, L):
+
+        for m in range(0, ell-1):
+
+            Alm = A(ell, m)
+            Blm = Alm / A(ell -1, m)
+
+            P[elm2ind(ell, m)] = cos_t * Alm * P[elm2ind(ell -1, m)] - Blm * P[elm2ind(ell-2, m)]
+            P[elm2ind(ell, -m)] = (-1.0)**m * P[elm2ind(ell, m)]
+
+            leg_to_sph(P, Y, ell, m, phi)
+
+        P[elm2ind(ell, ell -1)] = np.sqrt(2*(ell-1) + 3) * cos_t * P[elm2ind(ell-1, ell-1)]
+        P[elm2ind(ell, -ell +1)] = (-1.0)**(ell-1) * P[elm2ind(ell, ell -1)]
+
+        m = ell -1
+        leg_to_sph(P, Y, ell, m, phi)
+
+        P[elm2ind(ell, ell)] = -sin_t * np.sqrt((ell+0.5)/ell) * P[elm2ind(ell-1, ell-1)]
+        P[elm2ind(ell, -ell)] = (-1.0)**ell * P[elm2ind(ell, ell)]
+
+        m = ell
+        leg_to_sph(P, Y, ell, m, phi)
+
+    return Y
+
+@nb.njit(parallel=True)
+def point_sources_harmonics(I, RA, dec, L):
+
+    Nfreq, Nsrc = I.shape
+
+    Ilm = np.zeros((Nfreq, L**2), dtype=np.complex128)
+
+    for nn in nb.prange(Nsrc):
+
+        Y = spherical_harmonic_sequence(L, np.pi/2. - dec[nn], RA[nn])
+
+        for i_f in range(Nfreq):
+            Ilm[i_f] += I[i_f,nn] * Y
+
+    return Ilm
+
+# GLEAM
 
 # diffuse sky model generation
 def hp2ssht_index(hp_flm_in, lmax=None):
