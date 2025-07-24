@@ -2,19 +2,7 @@
 RIMEz
 =====
 
-.. start-badges
-.. image:: https://github.com/UPennEoR/RIMEz/workflows/Tests/badge.svg
-    :target: https://github.com/UPennEOR/RIMEz/actions
-.. image:: https://codecov.io/gh/UPennEoR/RIMEz/branch/master/graph/badge.svg
-    :target: https://codecov.io/gh/UPennEoR/RIMEz
-.. image:: https://img.shields.io/badge/code%20style-black-000000.svg
-    :target: https://github.com/ambv/black
-.. image:: https://readthedocs.org/projects/rimez/badge/?version=latest
-    :target: https://rimez.readthedocs.io/en/latest/?badge=latest
-    :alt: Documentation Status
-.. end-badges
-
-**Radio Interferometric Measurement Equation solver**
+**Radio Interferometric Measurement Equation(s)**
 
 Installation
 ============
